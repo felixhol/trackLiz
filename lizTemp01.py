@@ -6,8 +6,8 @@ Use corner coordinates to rotate detections (includes filtering), use rotated de
 specific Y-track. Use x-coordinate and temperature callibration to calculate corresponding temperature.
 '''
 
-#import matplotlib as mpl
-#import matplotlib.pyplot as plt
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import pandas as pd
 from pathlib import Path
 import numpy as np
@@ -18,13 +18,13 @@ import math
 import deeplabcut
 import pickle
 import warnings
-# import seaborn as sns
+import seaborn as sns
 import cv2
 warnings.simplefilter('ignore')
 
 ### Load DLC detections and a dataframe to steal the header for convenience
 
-videos = glob.glob('/home/felix/Dropbox/HongKong/*/*.AVI')
+videos = glob.glob('/home/felix/Dropbox/HongKong/11062019_60616263/*2.AVI')
 
 print('processing ' + str(len(videos)) + ' videos')
 print(videos)
@@ -60,6 +60,23 @@ for videoName in videos:
                     df[scorer, ind, bpt, 'likelihood'].loc[i] = f[frameNames[i]]['confidence'][bptN][0][0]
                 except:
                     pass
+        plt.figure(figsize=(10,7))
+        plt.plot(df[scorer, 'single', 'bottomrightcorner'].x, df[scorer, 'single', 'bottomrightcorner'].y, '.r')
+        plt.plot(df[scorer, 'single', 'bottomleftcorner'].x, df[scorer, 'single', 'bottomleftcorner'].y, '.c')
+        plt.plot(df[scorer, 'single', 'toprightcorner'].x, df[scorer, 'single', 'toprightcorner'].y, '.k')
+        plt.plot(df[scorer, 'single', 'topleftcorner'].x, df[scorer, 'single', 'topleftcorner'].y, '.m')
+        plt.savefig(videoName[:-4] + '_cornerDetections.png')
+
+        for bpt in tqdm(corners):
+            df[scorer, ind, bpt, 'x'].loc[df[scorer, ind, bpt].likelihood < 0.95] = np.nan
+            df[scorer, ind, bpt, 'y'].loc[df[scorer, ind, bpt].likelihood < 0.95] = np.nan
+
+        boxCenterX = 650
+
+        df[scorer, ind, 'bottomrightcorner', 'x'].loc[df[scorer, ind, 'bottomrightcorner'].x < boxCenterX] = np.nan
+        df[scorer, ind, 'toprightcorner', 'x'].loc[df[scorer, ind, 'toprightcorner'].x < boxCenterX] = np.nan
+        df[scorer, ind, 'bottomleftcorner', 'x'].loc[df[scorer, ind, 'bottomleftcorner'].x > boxCenterX] = np.nan
+        df[scorer, ind, 'topleftcorner', 'x'].loc[df[scorer, ind, 'topleftcorner'].x > boxCenterX] = np.nan
 
         #### Interpolate (fill NaN), and rolling mean (window) of corners, add _filt columns
         window = 200
@@ -100,13 +117,25 @@ for videoName in videos:
             (df[scorer, 'single', corner + '_filt'].y * np.cos(df[scorer, 'single', 'angle'].angleM))
 
 
+        plt.figure(figsize=(10,7))
+        plt.plot(df[scorer, 'single', 'bottomrightcorner_rot'].x, df[scorer, 'single', 'bottomrightcorner_rot'].y, '.r', alpha = 0.1)
+        plt.plot(df[scorer, 'single', 'bottomleftcorner_rot'].x, df[scorer, 'single', 'bottomleftcorner_rot'].y, '.c', alpha = 0.1)
+        plt.plot(df[scorer, 'single', 'toprightcorner_rot'].x, df[scorer, 'single', 'toprightcorner_rot'].y, '.k', alpha = 0.1)
+        plt.plot(df[scorer, 'single', 'topleftcorner_rot'].x, df[scorer, 'single', 'topleftcorner_rot'].y, '.m', alpha = 0.1)
+        plt.savefig(videoName[:-4] + '_filteredCorners.png')
+
+
         bpts = df[scorer, 'liz1'].columns.get_level_values(0).unique()
 
         nAnimals = 4
         nBpts = 5
         individuals = df[scorer].columns.get_level_values(0).unique()[0:nAnimals]
         top = df[scorer, 'single', 'toprightcorner_rot'].y.mean()
+        if math.isnan(top):
+            top = df[scorer, 'single', 'topleftcorner_rot'].y.mean()
         bottom = df[scorer, 'single', 'bottomrightcorner_rot'].y.mean()
+        if math.isnan(bottom):
+            bottom = df[scorer, 'single', 'bottomleftcorner_rot'].y.mean()
         bottomCorrection = 15
         trackYs = np.linspace(top, bottom - bottomCorrection, nAnimals + 1)
 
@@ -136,6 +165,15 @@ for videoName in videos:
                 except:
                     pass
 
+        plt.figure(figsize=(10,7))
+        plt.plot(df[scorer, 'liz1', 'head'].x, df[scorer, 'liz1', 'head'].y, '.', alpha=0.5)
+        plt.plot(df[scorer, 'liz2', 'head'].x, df[scorer, 'liz2', 'head'].y, '.', alpha=0.5)
+        plt.plot(df[scorer, 'liz3', 'head'].x, df[scorer, 'liz3', 'head'].y, '.', alpha=0.5)
+        plt.plot(df[scorer, 'liz4', 'head'].x, df[scorer, 'liz4', 'head'].y, '.', alpha=0.5)
+        plt.ylabel('y coordinate')
+        plt.xlabel('x coordinate')
+        plt.savefig(videoName[:-4] + '_headCoordinates.png')
+
         bpts = df[scorer, 'liz1'].columns.get_level_values(0).unique()
         x_left = np.mean(df[scorer, 'single', 'bottomleftcorner_rot'].x)
         x_right = np.mean(df[scorer, 'single', 'bottomrightcorner_rot'].x)
@@ -146,9 +184,9 @@ for videoName in videos:
 
 
         pixSum = []
-        x_tl = int(df[scorer, 'single', 'topleftcorner'].x.mean())
-        width = 900
-        y_tl = int(df[scorer, 'single', 'topleftcorner'].y.mean())
+        x_tr = int(df[scorer, 'single', 'toprightcorner'].x.mean())
+        width = 700
+        y_tr = int(df[scorer, 'single', 'toprightcorner'].y.mean())
         heigth = 350
 
         cap = cv2.VideoCapture(videoName)
@@ -158,17 +196,21 @@ for videoName in videos:
             success,image = cap.read()
             if image is not None:
                 count += 1
-                pixSum = np.append(pixSum, np.sum(image[y_tl-170:y_tl+heigth, x_tl-70:x_tl+width, 0]))
+                pixSum = np.append(pixSum, np.sum(image[y_tr-80:y_tr+heigth, x_tr-width:x_tr+80, 0]))
 
         pixSum = np.append(pixSum, pixSum[-1])
 
-        LDratio = np.percentile(pixSum, 80)/np.percentile(pixSum, 20)
+        LDratio = np.percentile(pixSum, 90)/np.percentile(pixSum, 10)
 
         if LDratio > 3:
             lightTh = np.percentile(pixSum, 50)
             pixSumBool = pixSum > lightTh
         else:
             pixSumBool = pixSum > 0
+
+        plt.figure(figsize=(10,7))
+        plt.plot(pixSum)
+        plt.savefig(videoName[:-4] + '_ligthIntensity.png')
 
 
         for ind in individuals:
@@ -178,6 +220,43 @@ for videoName in videos:
         newFile = videoName[:-4] + '_Temperature.h5'
         print('saving: ' + newFile)
         df.to_hdf(newFile, key="df_with_missing", mode="w")
+
+        i = 0
+
+        fig, axes = plt.subplots(1, 4, figsize=(25, 5))
+
+        for ind in individuals:
+                sns.histplot(ax=axes[i], data=df[scorer, ind, 'back'], x='temp', color='r', bins=18, stat="density")
+                ax=axes[i]
+                ax.set_xlabel('temperature (C)')
+                i += 1
+
+        plt.savefig(videoName[:-4] + '_tempHist.png')
+
+        tempData = pd.DataFrame(columns=['experiment', 'lizard', 'meanT_back', 'stdT_back', 'meanT_head', 'stdT_head',
+                                 'meanLightT', 'meanDarkT', 'minT', 'maxT', 'minTlight', 'maxTlight',
+                                 'minTdark', 'maxTdark'])
+
+        for ind in individuals:
+            tempData = tempData.append({'experiment': Path(videoName).stem,
+                                        'lizard': ind,
+                                        'meanT_back': df[scorer, ind, 'back', 'temp'].mean(),
+                                        'stdT_back': df[scorer, ind, 'back', 'temp'].std(),
+                                        'meanT_head': df[scorer, ind, 'head', 'temp'].mean(),
+                                        'stdT_head': df[scorer, ind, 'head', 'temp'].std(),
+                                        'meanLightT': df.loc[df[scorer, ind, 'head', 'light'] == True][scorer, ind, 'head', 'temp'].mean(),
+                                        'stdLightT': df.loc[df[scorer, ind, 'head', 'light'] == True][scorer, ind, 'head', 'temp'].std(),
+                                        'meanDarkT': df.loc[df[scorer, ind, 'head', 'light'] == False][scorer, ind, 'head', 'temp'].mean(),
+                                        'stdDarkT': df.loc[df[scorer, ind, 'head', 'light'] == False][scorer, ind, 'head', 'temp'].std(),
+                                        'minT': df[scorer, ind, 'head', 'temp'].quantile(0.1),
+                                        'maxT': df[scorer, ind, 'head', 'temp'].quantile(0.9),
+                                        'minTlight': df.loc[df[scorer, ind, 'head', 'light'] == True][scorer, ind, 'head', 'temp'].quantile(0.1),
+                                        'maxTlight': df.loc[df[scorer, ind, 'head', 'light'] == True][scorer, ind, 'head', 'temp'].quantile(0.9),
+                                        'minTdark': df.loc[df[scorer, ind, 'head', 'light'] == False][scorer, ind, 'head', 'temp'].quantile(0.1),
+                                        'maxTdark': df.loc[df[scorer, ind, 'head', 'light'] == False][scorer, ind, 'head', 'temp'].quantile(0.9)
+                                       }, ignore_index=True)
+
+        tempData.to_csv(videoName[:-4] + 'temperatureData.csv')
 
     except:
         pass
